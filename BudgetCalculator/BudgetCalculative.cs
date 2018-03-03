@@ -4,18 +4,6 @@ using System.Linq;
 
 namespace BudgetCalculator
 {
-    internal class Period
-    {
-        public Period(DateTime start, DateTime end)
-        {
-            Start = start;
-            End = end;
-        }
-
-        public DateTime Start { get; private set; }
-        public DateTime End { get; private set; }
-    }
-
     internal class BudgetCalculating
     {
         private readonly IRepository<Budget> _repo;
@@ -27,62 +15,49 @@ namespace BudgetCalculator
 
         public decimal GetTotalAmount(DateTime start, DateTime end)
         {
-            if (start > end)
-            {
-                throw new ArgumentException();
-            }
-
             var period = new Period(start, end);
-            return IsSameMonth(period)
-                ? GetOneMonthAmount(period)
-                : GetRangeMonthAmount(start, end);
+            var budgets = _repo.GetAll();
+
+            return period.IsSameMonth()
+                ? GetOneMonthAmount(period, budgets)
+                : GetRangeMonthAmount(period, budgets);
         }
 
-        private decimal GetRangeMonthAmount(DateTime start, DateTime end)
+        private int GetOneMonthAmount(Period period, List<Budget> budgets)
         {
+            var budget = budgets.Get(period.Start);
+            if (budget == null)
+            {
+                return 0;
+            }
+
+            return budget.DailyAmount() * period.GetEffectiveDays();
+        }
+
+        private decimal GetRangeMonthAmount(Period period, List<Budget> budgets)
+        {
+            var start = period.Start;
+            var end = period.End;
+
             var monthCount = end.MonthDifference(start);
             var total = 0;
             for (var index = 0; index <= monthCount; index++)
             {
                 if (index == 0)
                 {
-                    total += GetOneMonthAmount(new Period(start, start.LastDate()));
+                    total += GetOneMonthAmount(new Period(start, start.LastDate()), budgets);
                 }
                 else if (index == monthCount)
                 {
-                    total += GetOneMonthAmount(new Period(end.FirstDate(), end));
+                    total += GetOneMonthAmount(new Period(end.FirstDate(), end), budgets);
                 }
                 else
                 {
                     var now = start.AddMonths(index);
-                    total += GetOneMonthAmount(new Period(now.FirstDate(), now.LastDate()));
+                    total += GetOneMonthAmount(new Period(now.FirstDate(), now.LastDate()), budgets);
                 }
             }
             return total;
-        }
-
-        private bool IsSameMonth(Period period)
-        {
-            return period.Start.Year == period.End.Year && period.Start.Month == period.End.Month;
-        }
-
-        private int GetOneMonthAmount(Period period)
-        {
-            var start = period.Start;
-            var end = period.End;
-
-            var list = this._repo.GetAll();
-            var budget = list.Get(start)?.Amount ?? 0;
-
-            var days = DateTime.DaysInMonth(start.Year, start.Month);
-            var validDays = GetValidDays(start, end);
-
-            return (budget / days) * validDays;
-        }
-
-        private int GetValidDays(DateTime start, DateTime end)
-        {
-            return (end - start).Days + 1;
         }
     }
 
